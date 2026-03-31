@@ -38,7 +38,7 @@ export const call: LocalCommandCall = async (_args, context) => {
   }))
 
   delete process.env.ANTHROPIC_BASE_URL
-  delete process.env.ANTHROPIC_API_KEY
+  delete process.env.DOGE_API_KEY
   delete process.env.ANTHROPIC_MODEL
   clearCustomApiStorage()
 

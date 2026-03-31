@@ -33,7 +33,7 @@ import {
  * Environment variables for different client types:
  *
  * Direct API:
- * - ANTHROPIC_API_KEY: Required for direct API access
+ * - DOGE_API_KEY: Required for direct API access
  *
  * AWS Bedrock:
  * - AWS credentials configured via aws-sdk defaults

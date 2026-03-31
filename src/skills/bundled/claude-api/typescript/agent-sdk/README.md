@@ -8,7 +8,7 @@ Use the Claude Agent SDK when you want Claude Code style agents from Node or Bun
 npm install @anthropic-ai/claude-agent-sdk
 ```
 
-Set `ANTHROPIC_API_KEY` unless your runtime provides Claude Code style auth separately.
+Set `DOGE_API_KEY` unless your runtime provides Claude Code style auth separately.
 
 ## Minimal flow
 
