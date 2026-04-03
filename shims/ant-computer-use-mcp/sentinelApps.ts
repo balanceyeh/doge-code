@@ -1,3 +1,1 @@
-export function getSentinelCategory() {
-  return null
-}
+export * from '../../claude-code-source/deps/@ant/computer-use-mcp/src/sentinelApps.ts'
