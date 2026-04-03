@@ -8,7 +8,6 @@ import type {
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import type { EffortValue } from 'src/utils/effort.js'
 import {
-  contentToText,
   getToolDefinitions,
   joinBaseUrl,
   parseSSEChunk,
@@ -16,10 +15,15 @@ import {
   type OpenAICompatConfig,
 } from './openaiCompat.js'
 
+type OpenAIResponsesInputPart =
+  | { type: 'input_text'; text: string }
+  | { type: 'input_image'; image_url: string }
+  | { type: 'output_text'; text: string }
+
 type OpenAIResponsesInputItem = {
   type: string
   role?: 'system' | 'user' | 'assistant'
-  content?: Array<Record<string, unknown>>
+  content?: OpenAIResponsesInputPart[]
   call_id?: string
   name?: string
   arguments?: string
@@ -97,6 +101,37 @@ function mapEffortToResponsesReasoning(
   }
 }
 
+function toDataUrl(mediaType: string, data: string): string {
+  return `data:${mediaType};base64,${data}`
+}
+
+function mapAnthropicUserBlocksToResponsesContent(
+  blocks: Array<Record<string, unknown>>,
+): OpenAIResponsesInputPart[] {
+  return blocks.flatMap(block => {
+    if (block.type === 'text' && typeof block.text === 'string' && block.text.length > 0) {
+      return [{ type: 'input_text' as const, text: block.text }]
+    }
+    if (
+      block.type === 'image' &&
+      block.source &&
+      typeof block.source === 'object' &&
+      (block.source as Record<string, unknown>).type === 'base64' &&
+      typeof (block.source as Record<string, unknown>).media_type === 'string' &&
+      typeof (block.source as Record<string, unknown>).data === 'string'
+    ) {
+      return [{
+        type: 'input_image' as const,
+        image_url: toDataUrl(
+          String((block.source as Record<string, unknown>).media_type),
+          String((block.source as Record<string, unknown>).data),
+        ),
+      }]
+    }
+    return []
+  })
+}
+
 function getResponsesToolDefinitions(tools?: BetaToolUnion[]): OpenAIResponsesRequest['tools'] {
   const definitions = getToolDefinitions(tools)
   if (!definitions) return undefined
@@ -155,14 +190,14 @@ export function convertAnthropicRequestToOpenAIResponses(input: {
         })
       }
 
-      const text = contentToText(
-        blocks.filter(block => block.type !== 'tool_result') as unknown as BetaMessageParam['content'],
+      const userContent = mapAnthropicUserBlocksToResponsesContent(
+        blocks.filter(block => block.type !== 'tool_result') as Array<Record<string, unknown>>,
       )
-      if (text) {
+      if (userContent.length > 0) {
         items.push({
           type: 'message',
           role: 'user',
-          content: [{ type: 'input_text', text }],
+          content: userContent,
         })
       }
       continue

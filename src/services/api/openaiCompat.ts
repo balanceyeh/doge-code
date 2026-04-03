@@ -26,9 +26,13 @@ type OpenAIToolCall = {
   }
 }
 
+type OpenAIChatContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+
 type OpenAIChatMessage = {
   role: 'system' | 'user' | 'assistant' | 'tool'
-  content?: string | null
+  content?: string | OpenAIChatContentPart[] | null
   tool_call_id?: string
   tool_calls?: OpenAIToolCall[]
 }
@@ -106,6 +110,39 @@ export function toBlocks(content: BetaMessageParam['content']): AnyBlock[] {
     : [{ type: 'text', text: content }]
 }
 
+function toDataUrl(mediaType: string, data: string): string {
+  return `data:${mediaType};base64,${data}`
+}
+
+function mapAnthropicUserBlocksToOpenAIContent(
+  blocks: AnyBlock[],
+): OpenAIChatContentPart[] {
+  return blocks.flatMap(block => {
+    if (block.type === 'text' && typeof block.text === 'string' && block.text.length > 0) {
+      return [{ type: 'text' as const, text: block.text }]
+    }
+    if (
+      block.type === 'image' &&
+      block.source &&
+      typeof block.source === 'object' &&
+      (block.source as Record<string, unknown>).type === 'base64' &&
+      typeof (block.source as Record<string, unknown>).media_type === 'string' &&
+      typeof (block.source as Record<string, unknown>).data === 'string'
+    ) {
+      return [{
+        type: 'image_url' as const,
+        image_url: {
+          url: toDataUrl(
+            String((block.source as Record<string, unknown>).media_type),
+            String((block.source as Record<string, unknown>).data),
+          ),
+        },
+      }]
+    }
+    return []
+  })
+}
+
 export function getToolDefinitions(tools?: BetaToolUnion[]): OpenAIChatRequest['tools'] {
   if (!tools || tools.length === 0) return undefined
   const mapped = tools.flatMap(tool => {
@@ -165,10 +202,10 @@ export function convertAnthropicRequestToOpenAI(input: {
         })
       }
 
-      const text = contentToText(
-        blocks.filter(block => block.type !== 'tool_result') as unknown as BetaMessageParam['content'],
+      const userContent = mapAnthropicUserBlocksToOpenAIContent(
+        blocks.filter(block => block.type !== 'tool_result') as AnyBlock[],
       )
-      if (text) messages.push({ role: 'user', content: text })
+      if (userContent.length > 0) messages.push({ role: 'user', content: userContent })
       continue
     }
 

@@ -8,7 +8,6 @@ import type {
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import type { EffortValue } from 'src/utils/effort.js'
 import {
-  contentToText,
   getToolDefinitions,
   joinBaseUrl,
   parseSSEChunk,
@@ -22,6 +21,10 @@ type GeminiPart = {
   text?: string
   thought?: boolean
   thoughtSignature?: string
+  inlineData?: {
+    mimeType: string
+    data: string
+  }
   functionCall?: {
     name?: string
     args?: unknown
@@ -147,6 +150,30 @@ function mapEffortToGeminiThinkingBudget(effort?: EffortValue): number | undefin
   return undefined
 }
 
+function mapAnthropicUserBlocksToGeminiParts(blocks: AnyBlock[]): GeminiPart[] {
+  return blocks.flatMap(block => {
+    if (block.type === 'text' && typeof block.text === 'string' && block.text.length > 0) {
+      return [{ text: block.text }]
+    }
+    if (
+      block.type === 'image' &&
+      block.source &&
+      typeof block.source === 'object' &&
+      (block.source as Record<string, unknown>).type === 'base64' &&
+      typeof (block.source as Record<string, unknown>).media_type === 'string' &&
+      typeof (block.source as Record<string, unknown>).data === 'string'
+    ) {
+      return [{
+        inlineData: {
+          mimeType: String((block.source as Record<string, unknown>).media_type),
+          data: String((block.source as Record<string, unknown>).data),
+        },
+      }]
+    }
+    return []
+  })
+}
+
 export function convertAnthropicRequestToGemini(input: {
   model: string
   system?: string | Array<{ type?: string; text?: string }>
@@ -198,20 +225,14 @@ export function convertAnthropicRequestToGemini(input: {
               },
             },
           })
-          continue
-        }
-
-        if (block.type === 'text' && typeof block.text === 'string' && block.text.length > 0) {
-          parts.push({ text: block.text })
         }
       }
 
-      const text = contentToText(
-        blocks.filter(block => block.type !== 'tool_result') as unknown as BetaMessageParam['content'],
+      parts.push(
+        ...mapAnthropicUserBlocksToGeminiParts(
+          blocks.filter(block => block.type !== 'tool_result') as AnyBlock[],
+        ),
       )
-      if (parts.length === 0 && text) {
-        parts.push({ text })
-      }
 
       if (parts.length > 0) {
         contents.push({ role: 'user', parts })
